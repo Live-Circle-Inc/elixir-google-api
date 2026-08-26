@@ -93,9 +93,9 @@ defmodule Gax.ConnectionTest do
     body = %Tesla.Multipart{} = Keyword.get(request, :body)
     [part1, part2] = body.parts
     assert "{\"contentType\":\"text/plain\"}" == part1.body
-    assert [{:"Content-Type", "application/json"}] == part1.headers
+    assert [{"content-type", "application/json"}] == part1.headers
     assert data == part2.body
-    assert [{:"Content-Type", "text/plain"}] == part2.headers
+    assert [{"content-type", "text/plain"}] == part2.headers
   end
 
   test "builds a multipart upload request with iodata but no content type" do
@@ -110,9 +110,9 @@ defmodule Gax.ConnectionTest do
     body = %Tesla.Multipart{} = Keyword.get(request, :body)
     [part1, part2] = body.parts
     assert "{\"foo\":\"bar\"}" == part1.body
-    assert [{:"Content-Type", "application/json"}] == part1.headers
+    assert [{"content-type", "application/json"}] == part1.headers
     assert data == part2.body
-    assert [{:"Content-Type", "application/octet-stream"}] == part2.headers
+    assert [{"content-type", "application/octet-stream"}] == part2.headers
   end
 
   test "builds a multipart upload request with a JSON decodable struct" do
@@ -127,9 +127,9 @@ defmodule Gax.ConnectionTest do
     body = %Tesla.Multipart{} = Keyword.get(request, :body)
     [part1, part2] = body.parts
     assert "{\"foo\":\"bar\"}" == part1.body
-    assert [{:"Content-Type", "application/json"}] == part1.headers
+    assert [{"content-type", "application/json"}] == part1.headers
     assert "{\"baz\":\"qux\"}" == part2.body
-    assert [{:"Content-Type", "application/json"}] == part2.headers
+    assert [{"content-type", "application/json"}] == part2.headers
   end
 
   test "builds a multipart upload request with a non-JSON struct" do
@@ -149,7 +149,7 @@ defmodule Gax.ConnectionTest do
       |> Connection.build_request()
 
     elixir_version = System.version()
-    gax_version = Application.spec(:google_gax, :vsn)
+    gax_version = Application.spec(:ega_gax, :vsn)
 
     assert [{"x-goog-api-client", "gl-elixir/#{elixir_version} gax/#{gax_version} gdcl/"}] ==
              Keyword.get(request, :headers)
@@ -162,7 +162,7 @@ defmodule Gax.ConnectionTest do
       |> Connection.build_request()
 
     elixir_version = System.version()
-    gax_version = Application.spec(:google_gax, :vsn)
+    gax_version = Application.spec(:ega_gax, :vsn)
 
     assert [{"x-goog-api-client", "gl-elixir/#{elixir_version} gax/#{gax_version} gdcl/1.2.3"}] ==
              Keyword.get(request, :headers)
@@ -175,7 +175,7 @@ defmodule Gax.ConnectionTest do
       |> Connection.build_request()
 
     elixir_version = System.version()
-    gax_version = Application.spec(:google_gax, :vsn)
+    gax_version = Application.spec(:ega_gax, :vsn)
 
     assert [
              {"x-goog-api-client",
@@ -196,7 +196,7 @@ defmodule Gax.ConnectionTest do
       |> Connection.build_request()
 
     elixir_version = System.version()
-    gax_version = Application.spec(:google_gax, :vsn)
+    gax_version = Application.spec(:ega_gax, :vsn)
 
     assert [
              {"x-goog-api-client",
