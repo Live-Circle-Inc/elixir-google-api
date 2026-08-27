@@ -96,7 +96,9 @@ defmodule GoogleApis.Generator.ElixirGenerator.Model do
 
   defp from_schema(name, %JsonSchema{type: "array", items: items}, context) do
     case from_schema(name, items, context) do
-      [model | property_models] -> [%__MODULE__{model | is_array: true} | property_models]
+      [%__MODULE__{} = model | property_models] ->
+        [%__MODULE__{model | is_array: true} | property_models]
+
       [] -> []
     end
   end

@@ -24,7 +24,7 @@ defmodule GoogleApis.Generator do
     Logger.info("Bumping #{bump_type}")
     new_version = bump_version_string(hex_version, bump_type)
     mix_version = current_mix_version(api_config)
-    if Version.parse!(new_version) > Version.parse!(mix_version) do
+    if Version.compare(new_version, mix_version) == :gt do
       set_mix_version(api_config, new_version)
       requirement = version_requirement_string(new_version)
       set_readme_version(api_config, requirement)
@@ -54,7 +54,7 @@ defmodule GoogleApis.Generator do
       version
     else
       _ ->
-        Logger.warn(
+        Logger.warning(
           "Failed to get hex version for #{package_name}. Falling back on reading mix.exs."
         )
 

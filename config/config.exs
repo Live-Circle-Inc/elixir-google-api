@@ -1,6 +1,6 @@
 # This file is responsible for configuring your application
-# and its dependencies with the aid of the Mix.Config module.
-use Mix.Config
+# and its dependencies with the aid of the Config module.
+import Config
 
 # This configuration is loaded before any dependency and is restricted
 # to this project. If another project depends on this project, this
@@ -36,3 +36,9 @@ config :google_apis,
   oauth_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
   template: System.get_env("TEMPLATE") || "gax",
   tempdir: System.get_env("TEMPDIR")
+
+# `use Tesla` is soft-deprecated as of tesla 1.15 in favour of runtime
+# configuration. The warning also fires from the generated
+# google_api_discovery dependency, which can't be changed from here.
+# See https://github.com/elixir-tesla/tesla/discussions/732
+config :tesla, disable_deprecated_builder_warning: true

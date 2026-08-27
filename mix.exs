@@ -18,7 +18,7 @@ defmodule GoogleApis.Mixfile do
     [
       app: :google_apis,
       version: "0.1.0",
-      elixir: "~> 1.6",
+      elixir: "~> 1.14",
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       deps: deps()
@@ -30,7 +30,7 @@ defmodule GoogleApis.Mixfile do
   # Type "mix help compile.app" for more information
   def application do
     # Specify extra applications you'll use from Erlang/Elixir
-    [applications: [:oauth2], extra_applications: [:logger]]
+    [extra_applications: [:logger]]
   end
 
   # Dependencies can be Hex packages:
@@ -45,11 +45,11 @@ defmodule GoogleApis.Mixfile do
   defp deps do
     [
       {:google_api_discovery, "~> 0.12.0"},
-      {:tesla, "~> 1.8"},
+      {:tesla, "~> 1.21"},
       {:oauth2, "~> 0.9"},
       {:temp, "~> 0.4"},
       {:jason, "~> 1.1"},
-      {:poison, "~> 3.1"}
+      {:poison, "~> 4.0"}
     ]
   end
 end
