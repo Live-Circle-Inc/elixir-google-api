@@ -33,7 +33,20 @@ defmodule GoogleApi.Gax.Connection do
         )
       )
 
-      plug(Tesla.Middleware.DecompressResponse, [])
+      # Tesla >= 1.18.3 makes :max_body_size mandatory on the compression
+      # middleware (it is the decompression-bomb guard added by CVE-2026-48594),
+      # so passing [] here raises ArgumentError on every single request. The cap
+      # is configurable per otp_app, mirroring :base_url above; the 32 MiB
+      # default is the value Tesla's own documentation uses as an example.
+      plug(
+        Tesla.Middleware.DecompressResponse,
+        max_body_size:
+          Application.get_env(
+            unquote(Keyword.get(opts, :otp_app)),
+            :max_body_size,
+            32 * 1024 * 1024
+          )
+      )
 
       plug(Tesla.Middleware.EncodeJson, engine: Poison)
 
@@ -167,7 +180,7 @@ defmodule GoogleApi.Gax.Connection do
   defp build_body(output, [], file_params) do
     body =
       Enum.reduce(file_params, Tesla.Multipart.new(), fn {file_name, file_path}, b ->
-        Tesla.Multipart.add_file(b, file_path, name: file_name)
+        Tesla.Multipart.add_file(b, file_path, name: to_string(file_name))
       end)
 
     Keyword.put(output, :body, body)
@@ -182,9 +195,9 @@ defmodule GoogleApi.Gax.Connection do
       nil -> body
       _   -> Tesla.Multipart.add_field(
         body,
-        :metadata,
+        "metadata",
         Poison.encode!(meta),
-        headers: [{:"Content-Type", "application/json"}]
+        headers: [{"content-type", "application/json"}]
       )
     end
 
@@ -193,15 +206,15 @@ defmodule GoogleApi.Gax.Connection do
         {res, type} = try_encode_multipart_field(data, meta)
         Tesla.Multipart.add_field(
           b,
-          body_name,
+          to_string(body_name),
           res,
-          headers: [{:"Content-Type", type}]
+          headers: [{"content-type", type}]
         )
       end)
 
     body =
       Enum.reduce(file_params, body, fn {file_name, file_path}, b ->
-        Tesla.Multipart.add_file(b, file_path, name: file_name)
+        Tesla.Multipart.add_file(b, file_path, name: to_string(file_name))
       end)
 
     Keyword.put(output, :body, body)

@@ -29,14 +29,18 @@ defmodule Gax.ApiTest do
 
   test "basic request" do
     elixir_version = System.version()
-    gax_version = Application.spec(:google_gax, :vsn)
+    gax_version = Application.spec(:ega_gax, :vsn)
     api_client = "gl-elixir/#{elixir_version} gax/#{gax_version} gdcl/1.2.3"
 
     mock(fn %{
               method: :get,
               url: "https://example.com/v1/stores/store-1/pets",
-              headers: [{"x-goog-api-client", ^api_client}]
+              headers: headers
             } ->
+      # Tesla's compression middleware injects accept-encoding, so match on the
+      # api-client header being present rather than on the exact header list.
+      assert {"x-goog-api-client", api_client} in headers
+
       %Tesla.Env{status: 200, body: @pets_json}
     end)
 
@@ -55,14 +59,18 @@ defmodule Gax.ApiTest do
 
   test "request with compressed response" do
     elixir_version = System.version()
-    gax_version = Application.spec(:google_gax, :vsn)
+    gax_version = Application.spec(:ega_gax, :vsn)
     api_client = "gl-elixir/#{elixir_version} gax/#{gax_version} gdcl/1.2.3"
 
     mock(fn %{
               method: :get,
               url: "https://example.com/v1/stores/store-1/pets",
-              headers: [{"x-goog-api-client", ^api_client}]
+              headers: headers
             } ->
+      # Tesla's compression middleware injects accept-encoding, so match on the
+      # api-client header being present rather than on the exact header list.
+      assert {"x-goog-api-client", api_client} in headers
+
       %Tesla.Env{status: 200, body: @pets_json_compressed,
                  headers: [{"content-encoding", "gzip"}]}
     end)

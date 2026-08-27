@@ -32,3 +32,6 @@ clients/*/mix.lock
 /synth.metadata
 __pycache__/
 package-lock.json
+
+# Hex package tarballs built by `mix hex.build`
+*.tar

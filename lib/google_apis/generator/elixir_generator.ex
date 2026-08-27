@@ -91,20 +91,20 @@ defmodule GoogleApis.Generator.ElixirGenerator do
     )
   end
 
-  defp set_model_filenames(token) do
+  defp set_model_filenames(%Token{} = token) do
     {models, _} =
       token.models
-      |> Enum.map_reduce(MapSet.new(), fn(model, used) ->
+      |> Enum.map_reduce(MapSet.new(), fn(%Model{} = model, used) ->
         {file, used} = find_unused_filename(Model.filename(model), used, 0)
         {%Model{model | filename: file}, used}
       end)
     %Token{token | models: models}
   end
 
-  defp set_api_filenames(token) do
+  defp set_api_filenames(%Token{} = token) do
     {apis, _} =
       token.apis
-      |> Enum.map_reduce(MapSet.new(), fn(api, used) ->
+      |> Enum.map_reduce(MapSet.new(), fn(%Api{} = api, used) ->
         {file, used} = find_unused_filename(Api.filename(api), used, 0)
         {%Api{api | filename: file}, used}
       end)

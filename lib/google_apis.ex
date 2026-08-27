@@ -18,7 +18,6 @@ defmodule GoogleApis do
   API specifications and generating clients from the specifications.
   """
 
-  require Logger
   alias GoogleApis.ApiConfig
 
   def fetch(api_config) do

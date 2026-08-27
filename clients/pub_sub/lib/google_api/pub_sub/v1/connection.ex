@@ -30,6 +30,6 @@ defmodule GoogleApi.PubSub.V1.Connection do
       # View and manage Pub/Sub topics and subscriptions
       "https://www.googleapis.com/auth/pubsub"
     ],
-    otp_app: :google_api_pub_sub,
+    otp_app: :ega_pub_sub,
     base_url: "https://pubsub.googleapis.com/"
 end
