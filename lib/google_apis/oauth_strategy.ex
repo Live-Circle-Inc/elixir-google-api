@@ -24,7 +24,10 @@ defmodule GoogleApis.OauthStrategy do
       site: "https://accounts.google.com",
       authorize_url: "/o/oauth2/auth",
       token_url: "/o/oauth2/token",
-      redirect_uri: "http://localhost/auth/callback"
+      redirect_uri: "http://localhost/auth/callback",
+      # oauth2 2.x ships with no serializers registered, so JSON token
+      # responses come back as an undecoded binary unless we opt in.
+      serializers: %{"application/json" => Jason}
     )
   end
 
