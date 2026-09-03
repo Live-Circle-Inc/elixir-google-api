@@ -224,6 +224,46 @@ the mix task:
 $> mix google_apis.generate CloudTrace
 ```
 
+## Releasing
+
+Releases are driven locally with [Task](https://taskfile.dev)
+(`brew install go-task`) — see `Taskfile.yml`. Run `task` to list targets.
+
+This fork owns two packages on hex.pm:
+
+| Directory          | Package        |
+| ------------------ | -------------- |
+| `clients/gax`      | `ega_gax`      |
+| `clients/pub_sub`  | `ega_pub_sub`  |
+
+Versions are set by hand — edit `@version` in the relevant `clients/*/mix.exs`.
+
+```bash
+task versions   # local version of each package, and whether it is on hex.pm
+task check      # generator tests + each package's tests
+task build      # build the hex tarballs without publishing, to see what ships
+task publish    # publish both packages to hex.pm, in dependency order
+task tag        # git tag each package at its current version
+```
+
+Publishing needs a hex login (`mix hex.user auth`) or `HEX_API_KEY` in the
+environment. `task publish` refuses to run from a dirty working tree (override
+with `ALLOW_DIRTY=1`) or to republish a version already on hex.pm.
+
+**`ega_gax` must be published before `ega_pub_sub`.** `clients/pub_sub`
+declares `{:ega_gax, "~> x.y"}` — a version requirement rather than a path
+dep, because Hex rejects path deps in published packages — so its `mix
+deps.get` resolves `ega_gax` from hex.pm. `task publish` handles the ordering
+and verifies it; `task publish:pub_sub` on its own will refuse if `ega_gax` is
+not published yet. Until `ega_gax`'s first release, `clients/pub_sub` cannot
+resolve its dependencies at all, so `task check` will fail there. `task build`
+works regardless, since `mix hex.build` needs no deps.
+
+Previous versions of this repo released through Google's internal Kokoro
+pipeline (`.kokoro/`) and a set of Ruby `toys` scripts (`.toys/`) that opened
+pull requests via `googleapis/ruby-common-tools`. Neither could run outside
+googleapis CI, and both have been removed in favour of the Taskfile.
+
 ## Contributing
 
 Contributions to this library are always welcome and highly encouraged.

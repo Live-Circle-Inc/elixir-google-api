@@ -1,0 +1,388 @@
+# Local release + development tasks for the ega fork.
+#
+# Replaces the previous Ruby toolchain (.toys/*.rb driving the `toys` gem and
+# googleapis/ruby-common-tools' yoshi-pr-generator) and Google's internal
+# Kokoro release pipeline (.kokoro/*), neither of which can run outside
+# googleapis CI. Everything here runs on a laptop with `task <name>`.
+#
+# Install task: brew install go-task
+# List tasks:   task
+
+version: '3'
+
+vars:
+  # The two packages this fork owns on hex.pm, in publish order.
+  #
+  # Order matters and is not cosmetic: clients/pub_sub/mix.exs depends on
+  # {:ega_gax, "~> x.y"} — a version requirement, not a path dep, because Hex
+  # rejects path deps in published packages. So `mix deps.get` inside
+  # clients/pub_sub resolves ega_gax from hex.pm, which means gax must already
+  # be published there. Publish gax first, always.
+  #
+  # Each entry is a directory under clients/; its hex package name is the
+  # directory name prefixed with "ega_" (enforced by _check-app-name).
+  PACKAGES: gax pub_sub
+
+  # Generated clients whose output has been hand-customized for this fork.
+  #
+  # The generator's write_mix_exs/write_readme/write_connection/write_config_exs
+  # all File.write! unconditionally, preserving only @version. So regenerating
+  # one of these silently reverts the fork's edits: module name, `app:`,
+  # `otp_app:`, the {:ega_gax, ...} dep, `import Config`, and the hex package
+  # name/description/maintainers. `task generate` refuses these unless FORCE=1.
+  FORKED_CLIENTS: pub_sub
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # ---------------------------------------------------------------- generator
+
+  deps:
+    desc: Fetch deps for the generator project
+    cmds:
+      - mix deps.get
+
+  compile:
+    desc: Compile the generator project
+    deps: [deps]
+    cmds:
+      - mix compile
+
+  fmt:
+    desc: Format the generator source
+    cmds:
+      - mix format
+
+  fmt:check:
+    desc: Verify the generator source is formatted
+    cmds:
+      - mix format --check-formatted
+
+  test:
+    desc: Run the generator test suite (offline)
+    deps: [deps]
+    env:
+      MIX_ENV: test
+    cmds:
+      - mix test
+
+  test:external:
+    desc: Generator tests including the `external` tag, which calls live discovery
+    deps: [deps]
+    env:
+      MIX_ENV: test
+    cmds:
+      # The 3 external-tagged tests fetch real discovery documents from
+      # www.googleapis.com, so this needs network and can fail for reasons
+      # that have nothing to do with your changes. `mix presubmit` runs these.
+      - mix test --include=external
+
+  test:client:
+    desc: 'Run one package''s tests. Usage: task test:client CLIENT=gax'
+    requires:
+      vars: [CLIENT]
+    dir: clients/{{.CLIENT}}
+    env:
+      MIX_ENV: test
+    cmds:
+      - |
+        if ! mix deps.get; then
+          echo "" >&2
+          echo "✗ Could not resolve deps for clients/{{.CLIENT}}." >&2
+          echo "  If it depends on a sibling ega_* package that is not on hex.pm yet," >&2
+          echo "  that one has to be published first. Run 'task versions' to see" >&2
+          echo "  what is published, then e.g. 'task publish:gax'." >&2
+          exit 1
+        fi
+      - mix test
+
+  test:clients:
+    desc: Run tests for every package this fork owns
+    cmds:
+      - for: { var: PACKAGES, split: ' ', as: CLIENT }
+        task: test:client
+        vars:
+          CLIENT: '{{.CLIENT}}'
+
+  check:
+    desc: Pre-push check — generator tests plus every package's tests
+    cmds:
+      # Deliberately no fmt:check: several generator sources inherited from
+      # upstream have never been formatted, and CI has never checked them, so
+      # including it here would make this target fail on an untouched tree.
+      # Run `task fmt:check` on its own if you want to see the backlog.
+      - task: test
+      - task: test:clients
+
+  # ------------------------------------------------------------------ codegen
+  #
+  # HEADS UP: fetching from the live discovery service is currently broken.
+  # lib/google_apis/discovery.ex:18 does `plug(Tesla.Middleware.DecompressResponse, [])`,
+  # and Tesla >= 1.18.3 requires :max_body_size there, so every fetch raises
+  # ArgumentError. It is the same bug the fork already fixed in
+  # clients/gax/lib/google_api/gax/connection.ex — the generator's own Tesla
+  # client just never got the same treatment.
+  #
+  # Until that is fixed, point DISCOVERIES_DIR at a directory of discovery
+  # documents named "<lowercase-api>.<version>.json" and the generator reads
+  # from disk instead (see GoogleApis.fetch/1). E.g.:
+  #
+  #   mkdir -p /tmp/discos
+  #   curl -s 'https://pubsub.googleapis.com/$discovery/rest?version=v1' \
+  #     -o /tmp/discos/pubsub.v1.json
+  #   DISCOVERIES_DIR=/tmp/discos task generate API=PubSub
+
+  generate:
+    desc: 'Regenerate a client from discovery. Usage: task generate API=PubSub'
+    requires:
+      vars: [API]
+    deps: [compile]
+    cmds:
+      - task: _not-a-forked-client
+        vars: { API: '{{.API}}' }
+      - mix google_apis.generate {{.API}}
+      # Only bump if generation actually changed something, mirroring what
+      # scripts/generate_client.sh and the old toys generate-updates did.
+      - |
+        if [ -n "$(git status --porcelain clients)" ]; then
+          mix google_apis.bump_version {{.API}}
+        else
+          echo "No changes for {{.API}}; skipping version bump."
+        fi
+
+  api-list:
+    desc: Refresh config/apis.json from the discovery service
+    deps: [compile]
+    cmds:
+      - mix google_apis.discover_update apis.json
+
+  _not-a-forked-client:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        # Same CamelCase -> snake_case rule the generator uses for client dirs.
+        dir=$(echo '{{.API}}' | sed -E 's/([A-Z]+)([A-Z][a-z])/\1_\2/g; s/([a-z0-9])([A-Z])/\1_\2/g' | tr 'A-Z' 'a-z')
+        for forked in {{.FORKED_CLIENTS}}; do
+          if [ "$dir" = "$forked" ] && [ -z "{{.FORCE}}" ]; then
+            echo "✗ Refusing to regenerate clients/$dir — it is customized for this fork." >&2
+            echo "" >&2
+            echo "  Regenerating reverts it to upstream: app: :google_api_$dir," >&2
+            echo "  {:google_gax, \"~> 0.4\"}, upstream package name and metadata." >&2
+            echo "" >&2
+            echo "  If you need a newer API surface, run with FORCE=1 and then" >&2
+            echo "  re-apply the fork's edits — 'git diff clients/$dir' will show" >&2
+            echo "  exactly what regeneration took away:" >&2
+            echo "" >&2
+            echo "    task generate API={{.API}} FORCE=1" >&2
+            exit 1
+          fi
+        done
+
+  # ------------------------------------------------------------------ release
+
+  versions:
+    desc: Show each package's local version and whether it is already on hex.pm
+    cmds:
+      - for: { var: PACKAGES, split: ' ', as: CLIENT }
+        task: _version-report
+        vars:
+          DIR: '{{.CLIENT}}'
+
+  build:
+    desc: Build the hex tarballs without publishing (inspect what would ship)
+    cmds:
+      - for: { var: PACKAGES, split: ' ', as: CLIENT }
+        task: _build
+        vars:
+          DIR: '{{.CLIENT}}'
+
+  publish:
+    desc: Publish every package to hex.pm, in dependency order
+    cmds:
+      - task: publish:gax
+      - task: publish:pub_sub
+        vars: { JUST_PUBLISHED_GAX: '1' }
+
+  publish:gax:
+    desc: Publish ega_gax to hex.pm
+    cmds:
+      - task: _publish
+        vars: { DIR: gax }
+
+  publish:pub_sub:
+    desc: Publish ega_pub_sub to hex.pm (needs ega_gax on hex.pm first)
+    cmds:
+      - task: _gax-requirement-ok
+        vars: { JUST_PUBLISHED_GAX: '{{.JUST_PUBLISHED_GAX}}' }
+      - task: _publish
+        vars: { DIR: pub_sub }
+
+  tag:
+    desc: Create a git tag per package at its current version
+    cmds:
+      - for: { var: PACKAGES, split: ' ', as: CLIENT }
+        task: _tag
+        vars:
+          DIR: '{{.CLIENT}}'
+
+  clean:
+    desc: Remove build artifacts and hex tarballs
+    cmds:
+      - rm -rf _build deps doc
+      - rm -rf clients/*/_build clients/*/deps clients/*/doc
+      - find . clients -maxdepth 2 -name '*.tar' -delete
+
+  # ----------------------------------------------------------------- internal
+  #
+  # Shell bodies below are YAML block scalars on purpose: the patterns contain
+  # colons, quotes and backslashes that a plain or quoted scalar would mangle.
+
+  _check-app-name:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        expected="ega_{{.DIR}}"
+        if ! grep -qE "^[[:space:]]*app: :${expected}," "clients/{{.DIR}}/mix.exs"; then
+          echo "✗ clients/{{.DIR}}/mix.exs does not declare 'app: :${expected}'." >&2
+          echo "  Taskfile derives hex package names as ega_<dir>; fix one or the other." >&2
+          exit 1
+        fi
+
+  _version-report:
+    internal: true
+    silent: true
+    vars:
+      APP: 'ega_{{.DIR}}'
+    cmds:
+      - task: _check-app-name
+        vars: { DIR: '{{.DIR}}' }
+      - |
+        version=$(sed -n 's/^[[:space:]]*@version "\([^"]*\)".*/\1/p' "clients/{{.DIR}}/mix.exs")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' \
+          "https://hex.pm/api/packages/{{.APP}}/releases/${version}")
+        if [ "$code" = "200" ]; then
+          state="already on hex.pm"
+        else
+          state="not yet published"
+        fi
+        printf '%-14s %-8s clients/%-8s %s\n' '{{.APP}}' "$version" '{{.DIR}}' "$state"
+
+  _build:
+    internal: true
+    dir: clients/{{.DIR}}
+    cmds:
+      # No deps.get: hex.build only reads mix.exs and the `files` list, so this
+      # stays an offline dry-run and works even before ega_gax's first publish,
+      # when clients/pub_sub cannot resolve its deps at all.
+      - mix hex.build
+
+  # Guards the constraint documented in clients/pub_sub/mix.exs: the local gax
+  # version must satisfy pub_sub's {:ega_gax, "~> x.y"} requirement, and must
+  # already be on hex.pm for `mix deps.get` in clients/pub_sub to resolve it.
+  _gax-requirement-ok:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        gax_version=$(sed -n 's/^[[:space:]]*@version "\([^"]*\)".*/\1/p' clients/gax/mix.exs)
+        requirement=$(sed -n 's/.*{:ega_gax, *"\([^"]*\)".*/\1/p' clients/pub_sub/mix.exs)
+
+        if [ -z "$gax_version" ] || [ -z "$requirement" ]; then
+          echo "✗ Could not read the gax version or pub_sub's ega_gax requirement." >&2
+          exit 1
+        fi
+
+        if ! elixir -e "System.halt(if Version.match?(\"$gax_version\", \"$requirement\"), do: 0, else: 1)"; then
+          echo "✗ clients/gax is at $gax_version, which does not satisfy pub_sub's" >&2
+          echo "  requirement {:ega_gax, \"$requirement\"}." >&2
+          echo "  Update that requirement in clients/pub_sub/mix.exs." >&2
+          exit 1
+        fi
+
+        # hex.pm's API can lag a few seconds behind a fresh publish, so retry
+        # during a back-to-back `task publish`. Standalone, gax should already
+        # be published, so fail immediately rather than stalling for 30s.
+        if [ -n "{{.JUST_PUBLISHED_GAX}}" ]; then attempts=10; else attempts=1; fi
+
+        for attempt in $(seq 1 $attempts); do
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "https://hex.pm/api/packages/ega_gax/releases/${gax_version}")
+          if [ "$code" = "200" ]; then
+            echo "✓ ega_gax $gax_version is on hex.pm and satisfies \"$requirement\""
+            exit 0
+          fi
+          if [ "$attempt" -lt "$attempts" ]; then
+            echo "waiting for ega_gax $gax_version on hex.pm ($attempt/$attempts)..."
+            sleep 3
+          fi
+        done
+
+        echo "✗ ega_gax $gax_version is not on hex.pm." >&2
+        echo "  Run 'task publish:gax' first — clients/pub_sub resolves it from hex." >&2
+        exit 1
+
+  _publish:
+    internal: true
+    silent: true
+    requires:
+      vars: [DIR]
+    vars:
+      APP: 'ega_{{.DIR}}'
+    cmds:
+      - task: _check-app-name
+        vars: { DIR: '{{.DIR}}' }
+      # Publishing from a dirty tree ships code that is in no commit.
+      # Override with ALLOW_DIRTY=1 if that is genuinely what you want.
+      - |
+        if [ -z "{{.ALLOW_DIRTY}}" ] && [ -n "$(git status --porcelain)" ]; then
+          echo "✗ Working tree is dirty. Commit first, or pass ALLOW_DIRTY=1." >&2
+          git status --short >&2
+          exit 1
+        fi
+      - |
+        version=$(sed -n 's/^[[:space:]]*@version "\([^"]*\)".*/\1/p' "clients/{{.DIR}}/mix.exs")
+        code=$(curl -sS -o /dev/null -w '%{http_code}' \
+          "https://hex.pm/api/packages/{{.APP}}/releases/${version}")
+        if [ "$code" = "200" ]; then
+          echo "✗ {{.APP}} ${version} is already on hex.pm." >&2
+          echo "  Bump @version in clients/{{.DIR}}/mix.exs first." >&2
+          exit 1
+        fi
+        echo "→ publishing {{.APP}} ${version}"
+      - task: test:client
+        vars: { CLIENT: '{{.DIR}}' }
+      - task: _hex-publish
+        vars: { DIR: '{{.DIR}}', APP: '{{.APP}}' }
+
+  _hex-publish:
+    internal: true
+    dir: clients/{{.DIR}}
+    cmds:
+      - mix deps.get
+      # No --yes: hex prints the file manifest and the version, and asks for
+      # confirmation. That prompt is the last chance to catch a mistake, so it
+      # stays. Set HEX_API_KEY to publish without a local `mix hex.user auth`.
+      - mix hex.publish
+      - echo "✓ Published {{.APP}} — tag it with 'task tag'"
+
+  _tag:
+    internal: true
+    silent: true
+    vars:
+      APP: 'ega_{{.DIR}}'
+    cmds:
+      - |
+        version=$(sed -n 's/^[[:space:]]*@version "\([^"]*\)".*/\1/p' "clients/{{.DIR}}/mix.exs")
+        tag="{{.APP}}-v${version}"
+        if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+          echo "tag ${tag} already exists; skipping"
+          exit 0
+        fi
+        git tag -a "${tag}" -m "{{.APP}} ${version}"
+        echo "✓ created ${tag} — push it with: git push origin ${tag}"

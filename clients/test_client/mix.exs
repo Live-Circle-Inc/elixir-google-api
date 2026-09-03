@@ -40,7 +40,7 @@ defmodule GoogleApi.TestClient.Mixfile do
 
   defp deps() do
     [
-      {:google_gax, "~> 0.4"},
+      {:ega_gax, "~> 0.5"},
 
       {:ex_doc, "~> 0.16", only: :dev}
     ]
