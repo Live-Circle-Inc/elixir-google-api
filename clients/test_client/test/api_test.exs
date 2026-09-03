@@ -95,7 +95,9 @@ defmodule Gax.ApiTest do
     mock(fn %{method: :post, url: "http://localhost:8080/upload/v1/b/bucket-1/o", body: body} ->
       assert %Tesla.Multipart{parts: [metadata, file]} = body
       assert Poison.encode!(container) == metadata.body
-      assert ["Content-Type": "application/json"] == metadata.headers
+      # Tesla 1.21 changed Multipart part headers from an atom-keyed keyword
+      # list to string tuples.
+      assert [{"content-type", "application/json"}] == metadata.headers
 
       assert %File.Stream{} = file.body
 

@@ -40,7 +40,11 @@ defmodule <%= namespace %>.Mixfile do
 
   defp deps() do
     [
-      {:google_gax, "~> 0.4"},
+      # Live Circle fork of google_gax. Upstream 0.4.1 is archived and breaks on
+      # Tesla >= 1.18.3 twice over: the compression middleware now requires
+      # :max_body_size (upstream passes []), and Tesla.Multipart rejects atom
+      # field names (upstream passes them unconverted). See clients/gax.
+      {:ega_gax, "~> 0.5"},
 
       {:ex_doc, "~> 0.16", only: :dev}
     ]

@@ -15,7 +15,16 @@
 defmodule GoogleApis.Discovery do
   defmodule Client do
     use Tesla
-    plug(Tesla.Middleware.DecompressResponse, [])
+
+    # Tesla >= 1.18.3 makes :max_body_size mandatory on the compression
+    # middleware (the decompression-bomb guard), so the previous `[]` raised
+    # ArgumentError on every discovery fetch. Same fix already carried by
+    # clients/gax/lib/google_api/gax/connection.ex, applied here to the
+    # generator's own client. Discovery documents run a few hundred KB, so the
+    # 32 MiB cap from Tesla's own docs leaves ample headroom.
+    @max_body_size 32 * 1024 * 1024
+
+    plug(Tesla.Middleware.DecompressResponse, max_body_size: @max_body_size)
   end
 
   alias GoogleApis.ApiConfig

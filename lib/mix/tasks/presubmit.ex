@@ -53,8 +53,14 @@ defmodule Mix.Tasks.Presubmit do
   end
 
   defp get_changed_files([pr: pr_number]) do
+    # Was hardcoded to googleapis/elixir-google-api, so in this fork it pulled
+    # an unrelated upstream PR's diff (855 files) and tested the wrong things.
+    # GitHub Actions always sets GITHUB_REPOSITORY; the fallback keeps local
+    # `mix presubmit --pr N` working.
+    repo = System.get_env("GITHUB_REPOSITORY") || "Live-Circle-Inc/elixir-google-api"
+
     {:ok, %{status: 200, body: diff}} =
-      Tesla.get("https://patch-diff.githubusercontent.com/raw/googleapis/elixir-google-api/pull/#{pr_number}.diff")
+      Tesla.get("https://patch-diff.githubusercontent.com/raw/#{repo}/pull/#{pr_number}.diff")
 
     diff
     |> String.split("\n", trim: true)

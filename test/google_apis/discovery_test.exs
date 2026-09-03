@@ -29,16 +29,22 @@ defmodule GoogleApis.DiscoveryTest do
     assert "Pubsub" == content["canonicalName"]
   end
 
+  # Exercises the try_formats/3 fallback: GOOGLE_REST_SIMPLE_URI 404s for this
+  # API, so fetch/1 must retry with the original "rest" format.
+  #
+  # Previously pointed at analyticsreporting v4, whose discovery document now
+  # 404s in both formats (Google retired the API), making this assert the
+  # impossible. BigQuery v2 is a long-lived API that still behaves this way.
   test "fetch fallback rest urls" do
     assert {:ok, {body, format}} =
              Discovery.fetch(
-               "https://analyticsreporting.googleapis.com/$discovery/rest?version=v4"
+               "https://bigquery.googleapis.com/$discovery/rest?version=v2"
              )
 
     assert "rest" == format
 
     assert {:ok, content} = Poison.decode(body)
-    assert "AnalyticsReporting" == content["canonicalName"]
+    assert "Bigquery" == content["canonicalName"]
   end
 
   test "fetch default urls" do
